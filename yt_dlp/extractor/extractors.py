@@ -1,6 +1,12 @@
 # flake8: noqa
 from __future__ import unicode_literals
-
+from .taobao import (
+    TaobaoIE,
+    TmallIE,
+    TaobaoWorldIE,
+    Ali1688IE,
+    TbcnIE,
+)
 from .abc import (
     ABCIE,
     ABCIViewIE,
