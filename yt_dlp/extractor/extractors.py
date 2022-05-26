@@ -1,3 +1,10 @@
+from taobao import (
+    TmallIE,
+    TaobaoIE,
+    TbcnIE,
+    TaobaoWorldIE,
+    Ali1688IE,
+)
 from .abc import (
     ABCIE,
     ABCIViewIE,
