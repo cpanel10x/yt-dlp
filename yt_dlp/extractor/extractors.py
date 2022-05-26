@@ -1,5 +1,3 @@
-# flake8: noqa: F401
-
 from .abc import (
     ABCIE,
     ABCIViewIE,
