@@ -1,30 +1,26 @@
-# coding: utf-8
-from __future__ import unicode_literals
-
 import itertools
+import json
 import random
+import re
 import string
 import time
-import json
 
 from .common import InfoExtractor
-from ..compat import (
-    compat_urllib_parse_unquote,
-    compat_urllib_parse_urlparse
-)
+from ..compat import compat_urllib_parse_unquote, compat_urllib_parse_urlparse
 from ..utils import (
     ExtractorError,
     HEADRequest,
+    LazyList,
+    UnsupportedError,
     get_first,
     int_or_none,
     join_nonempty,
-    LazyList,
+    qualities,
     srt_subtitles_timecode,
     str_or_none,
     traverse_obj,
     try_get,
     url_or_none,
-    qualities,
 )
 
 
@@ -37,6 +33,10 @@ class TikTokBaseIE(InfoExtractor):
     _UPLOADER_URL_FORMAT = 'https://www.tiktok.com/@%s'
     _WEBPAGE_HOST = 'https://www.tiktok.com/'
     QUALITIES = ('360p', '540p', '720p', '1080p')
+
+    @staticmethod
+    def _create_url(user_id, video_id):
+        return f'https://www.tiktok.com/@{user_id or "_"}/video/{video_id}'
 
     def _call_api_impl(self, ep, query, manifest_app_version, video_id, fatal=True,
                        note='Downloading API JSON', errnote='Unable to download API page'):
@@ -263,8 +263,8 @@ class TikTokBaseIE(InfoExtractor):
 
         return {
             'id': aweme_id,
-            'title': aweme_detail['desc'],
-            'description': aweme_detail['desc'],
+            'title': aweme_detail.get('desc'),
+            'description': aweme_detail.get('desc'),
             'view_count': int_or_none(stats_info.get('play_count')),
             'like_count': int_or_none(stats_info.get('digg_count')),
             'repost_count': int_or_none(stats_info.get('share_count')),
@@ -363,7 +363,7 @@ class TikTokBaseIE(InfoExtractor):
 
 
 class TikTokIE(TikTokBaseIE):
-    _VALID_URL = r'https?://www\.tiktok\.com/@[\w\.-]+/video/(?P<id>\d+)'
+    _VALID_URL = r'https?://www\.tiktok\.com/(?:embed|@(?P<user_id>[\w\.-]+)/video)/(?P<id>\d+)'
 
     _TESTS = [{
         'url': 'https://www.tiktok.com/@leenabhushan/video/6748451240264420610',
@@ -387,6 +387,9 @@ class TikTokIE(TikTokBaseIE):
             'like_count': int,
             'repost_count': int,
             'comment_count': int,
+            'artist': 'Ysrbeats',
+            'album': 'Lehanga',
+            'track': 'Lehanga',
         }
     }, {
         'url': 'https://www.tiktok.com/@patroxofficial/video/6742501081818877190?langCountry=en',
@@ -410,6 +413,8 @@ class TikTokIE(TikTokBaseIE):
             'like_count': int,
             'repost_count': int,
             'comment_count': int,
+            'artist': 'Evan Todd, Jessica Keenan Wynn, Alice Lee, Barrett Wilbert Weed & Jon Eidson',
+            'track': 'Big Fun',
         }
     }, {
         # Banned audio, only available on the app
@@ -458,10 +463,39 @@ class TikTokIE(TikTokBaseIE):
         },
         'expected_warnings': ['Video not available']
     }, {
+        # Video without title and description
+        'url': 'https://www.tiktok.com/@pokemonlife22/video/7059698374567611694',
+        'info_dict': {
+            'id': '7059698374567611694',
+            'ext': 'mp4',
+            'title': 'TikTok video #7059698374567611694',
+            'description': '',
+            'uploader': 'pokemonlife22',
+            'creator': 'Pokemon',
+            'uploader_id': '6820838815978423302',
+            'uploader_url': 'https://www.tiktok.com/@MS4wLjABAAAA0tF1nBwQVVMyrGu3CqttkNgM68Do1OXUFuCY0CRQk8fEtSVDj89HqoqvbSTmUP2W',
+            'track': 'original sound',
+            'timestamp': 1643714123,
+            'duration': 6,
+            'thumbnail': r're:^https?://[\w\/\.\-]+(~[\w\-]+\.image)?',
+            'upload_date': '20220201',
+            'artist': 'Pokemon',
+            'view_count': int,
+            'like_count': int,
+            'repost_count': int,
+            'comment_count': int,
+        },
+        'expected_warnings': ['Video not available', 'Creating a generic title']
+    }, {
         # Auto-captions available
         'url': 'https://www.tiktok.com/@hankgreen1/video/7047596209028074758',
         'only_matching': True
     }]
+
+    @classmethod
+    def _extract_urls(cls, webpage):
+        return [mobj.group('url') for mobj in re.finditer(
+            rf'<(?:script|iframe)[^>]+\bsrc=(["\'])(?P<url>{cls._VALID_URL})', webpage)]
 
     def _extract_aweme_app(self, aweme_id):
         try:
@@ -479,7 +513,8 @@ class TikTokIE(TikTokBaseIE):
         return self._parse_aweme_video_app(aweme_detail)
 
     def _real_extract(self, url):
-        video_id = self._match_id(url)
+        video_id, user_id = self._match_valid_url(url).group('id', 'user_id')
+        url = self._create_url(user_id, video_id)
 
         try:
             return self._extract_aweme_app(video_id)
@@ -518,6 +553,15 @@ class TikTokUserIE(TikTokBaseIE):
         'info_dict': {
             'id': '6935371178089399301',
             'title': 'corgibobaa',
+            'thumbnail': r're:https://.+_1080x1080\.webp'
+        },
+        'expected_warnings': ['Retrying']
+    }, {
+        'url': 'https://www.tiktok.com/@6820838815978423302',
+        'playlist_mincount': 5,
+        'info_dict': {
+            'id': '6820838815978423302',
+            'title': '6820838815978423302',
             'thumbnail': r're:https://.+_1080x1080\.webp'
         },
         'expected_warnings': ['Retrying']
@@ -593,7 +637,7 @@ class TikTokUserIE(TikTokBaseIE):
         webpage = self._download_webpage(url, user_name, headers={
             'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)'
         })
-        user_id = self._html_search_regex(r'snssdk\d*://user/profile/(\d+)', webpage, 'user ID')
+        user_id = self._html_search_regex(r'snssdk\d*://user/profile/(\d+)', webpage, 'user ID', default=None) or user_name
 
         videos = LazyList(self._video_entries_api(webpage, user_id, user_name))
         thumbnail = traverse_obj(videos, (0, 'author', 'avatar_larger', 'url_list', 0))
@@ -852,5 +896,8 @@ class TikTokVMIE(InfoExtractor):
     }]
 
     def _real_extract(self, url):
-        return self.url_result(self._request_webpage(
-            HEADRequest(url), self._match_id(url), headers={'User-Agent': 'facebookexternalhit/1.1'}).geturl(), TikTokIE)
+        new_url = self._request_webpage(
+            HEADRequest(url), self._match_id(url), headers={'User-Agent': 'facebookexternalhit/1.1'}).geturl()
+        if self.suitable(new_url):  # Prevent infinite loop in case redirect fails
+            raise UnsupportedError(new_url)
+        return self.url_result(new_url)

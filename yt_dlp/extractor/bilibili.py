@@ -1,5 +1,3 @@
-# coding: utf-8
-
 import base64
 import hashlib
 import itertools
@@ -20,6 +18,7 @@ from ..utils import (
     float_or_none,
     mimetype2ext,
     parse_iso8601,
+    qualities,
     traverse_obj,
     parse_count,
     smuggle_url,
@@ -51,7 +50,7 @@ class BiliBiliIE(InfoExtractor):
 
     _TESTS = [{
         'url': 'http://www.bilibili.com/video/av1074402/',
-        'md5': '5f7d29e1a2872f3df0cf76b1f87d3788',
+        'md5': '7ac275ec84a99a6552c5d229659a0fe1',
         'info_dict': {
             'id': '1074402_part1',
             'ext': 'mp4',
@@ -61,6 +60,11 @@ class BiliBiliIE(InfoExtractor):
             'upload_date': '20140420',
             'description': 'md5:ce18c2a2d2193f0df2917d270f2e5923',
             'timestamp': 1398012678,
+            'tags': ['顶上去报复社会', '该来的总会来的', '金克拉是检验歌曲的唯一标准', '坷垃教主', '金坷垃', '邓紫棋', '治愈系坷垃'],
+            'bv_id': 'BV11x411K7CN',
+            'cid': '1554319',
+            'thumbnail': 'http://i2.hdslb.com/bfs/archive/c79a8cf0347cd7a897c53a2f756e96aead128e8c.jpg',
+            'duration': 308.36,
         },
     }, {
         # Tested in BiliBiliBangumiIE
@@ -91,6 +95,11 @@ class BiliBiliIE(InfoExtractor):
             'timestamp': 1488382634,
             'uploader_id': '65880958',
             'uploader': '阿滴英文',
+            'thumbnail': 'http://i2.hdslb.com/bfs/archive/49267ce20bc246be6304bf369a3ded0256854c23.jpg',
+            'cid': '14694589',
+            'duration': 554.117,
+            'bv_id': 'BV13x41117TL',
+            'tags': ['人文', '英语', '文化', '公开课', '阿滴英文'],
         },
         'params': {
             'skip_download': True,
@@ -107,6 +116,27 @@ class BiliBiliIE(InfoExtractor):
             'title': '物语中的人物是如何吐槽自己的OP的'
         },
         'playlist_count': 17,
+    }, {
+        # Correct matching of single and double quotes in title
+        'url': 'https://www.bilibili.com/video/BV1NY411E7Rx/',
+        'info_dict': {
+            'id': '255513412_part1',
+            'ext': 'mp4',
+            'title': 'Vid"eo" Te\'st',
+            'cid': '570602418',
+            'thumbnail': 'http://i2.hdslb.com/bfs/archive/0c0de5a90b6d5b991b8dcc6cde0afbf71d564791.jpg',
+            'upload_date': '20220408',
+            'timestamp': 1649436552,
+            'description': 'Vid"eo" Te\'st',
+            'uploader_id': '1630758804',
+            'bv_id': 'BV1NY411E7Rx',
+            'duration': 60.394,
+            'uploader': 'bili_31244483705',
+            'tags': ['VLOG'],
+        },
+        'params': {
+            'skip_download': True,
+        },
     }]
 
     _APP_KEY = 'iVGUTjsxvpLeuDCf'
@@ -258,7 +288,8 @@ class BiliBiliIE(InfoExtractor):
         self._sort_formats(formats)
 
         title = self._html_search_regex((
-            r'<h1[^>]+title=(["\'])(?P<content>[^"\']+)',
+            r'<h1[^>]+title=(["])(?P<content>[^"]+)',
+            r'<h1[^>]+title=([\'])(?P<content>[^\']+)',
             r'(?s)<h1[^>]*>(?P<content>.+?)</h1>',
             self._meta_regex('title')
         ), webpage, 'title', group='content', fatal=False)
@@ -926,9 +957,9 @@ class BiliIntlIE(BiliIntlBaseIE):
         if season_id and not video_data:
             # Non-Bstation layout, read through episode list
             season_json = self._call_api(f'/web/v2/ogv/play/episodes?season_id={season_id}&platform=web', video_id)
-            video_data = next(
-                episode for episode in traverse_obj(season_json, ('sections', ..., 'episodes', ...), expected_type=dict)
-                if str(episode.get('episode_id')) == ep_id)
+            video_data = traverse_obj(season_json,
+                                      ('sections', ..., 'episodes', lambda _, v: str(v['episode_id']) == ep_id),
+                                      expected_type=dict, get_all=False)
         return self._extract_video_info(video_data, ep_id=ep_id, aid=aid)
 
 
@@ -966,3 +997,88 @@ class BiliIntlSeriesIE(BiliIntlBaseIE):
             self._entries(series_id), series_id, series_info.get('title'), series_info.get('description'),
             categories=traverse_obj(series_info, ('styles', ..., 'title'), expected_type=str_or_none),
             thumbnail=url_or_none(series_info.get('horizontal_cover')), view_count=parse_count(series_info.get('view')))
+
+
+class BiliLiveIE(InfoExtractor):
+    _VALID_URL = r'https?://live.bilibili.com/(?P<id>\d+)'
+
+    _TESTS = [{
+        'url': 'https://live.bilibili.com/196',
+        'info_dict': {
+            'id': '33989',
+            'description': "周六杂谈回，其他时候随机游戏。 | \n录播：@下播型泛式录播组。 | \n直播通知群（全员禁言）：666906670，902092584，59971⑧481 （功能一样，别多加）",
+            'ext': 'flv',
+            'title': "太空狼人杀联动，不被爆杀就算赢",
+            'thumbnail': "https://i0.hdslb.com/bfs/live/new_room_cover/e607bc1529057ef4b332e1026e62cf46984c314d.jpg",
+            'timestamp': 1650802769,
+        },
+        'skip': 'not live'
+    }, {
+        'url': 'https://live.bilibili.com/196?broadcast_type=0&is_room_feed=1?spm_id_from=333.999.space_home.strengthen_live_card.click',
+        'only_matching': True
+    }]
+
+    _FORMATS = {
+        80: {'format_id': 'low', 'format_note': '流畅'},
+        150: {'format_id': 'high_res', 'format_note': '高清'},
+        250: {'format_id': 'ultra_high_res', 'format_note': '超清'},
+        400: {'format_id': 'blue_ray', 'format_note': '蓝光'},
+        10000: {'format_id': 'source', 'format_note': '原画'},
+        20000: {'format_id': '4K', 'format_note': '4K'},
+        30000: {'format_id': 'dolby', 'format_note': '杜比'},
+    }
+
+    _quality = staticmethod(qualities(list(_FORMATS)))
+
+    def _call_api(self, path, room_id, query):
+        api_result = self._download_json(f'https://api.live.bilibili.com/{path}', room_id, query=query)
+        if api_result.get('code') != 0:
+            raise ExtractorError(api_result.get('message') or 'Unable to download JSON metadata')
+        return api_result.get('data') or {}
+
+    def _parse_formats(self, qn, fmt):
+        for codec in fmt.get('codec') or []:
+            if codec.get('current_qn') != qn:
+                continue
+            for url_info in codec['url_info']:
+                yield {
+                    'url': f'{url_info["host"]}{codec["base_url"]}{url_info["extra"]}',
+                    'ext': fmt.get('format_name'),
+                    'vcodec': codec.get('codec_name'),
+                    'quality': self._quality(qn),
+                    **self._FORMATS[qn],
+                }
+
+    def _real_extract(self, url):
+        room_id = self._match_id(url)
+        room_data = self._call_api('room/v1/Room/get_info', room_id, {'id': room_id})
+        if room_data.get('live_status') == 0:
+            raise ExtractorError('Streamer is not live', expected=True)
+
+        formats = []
+        for qn in self._FORMATS.keys():
+            stream_data = self._call_api('xlive/web-room/v2/index/getRoomPlayInfo', room_id, {
+                'room_id': room_id,
+                'qn': qn,
+                'codec': '0,1',
+                'format': '0,2',
+                'mask': '0',
+                'no_playurl': '0',
+                'platform': 'web',
+                'protocol': '0,1',
+            })
+            for fmt in traverse_obj(stream_data, ('playurl_info', 'playurl', 'stream', ..., 'format', ...)) or []:
+                formats.extend(self._parse_formats(qn, fmt))
+        self._sort_formats(formats)
+
+        return {
+            'id': room_id,
+            'title': room_data.get('title'),
+            'description': room_data.get('description'),
+            'thumbnail': room_data.get('user_cover'),
+            'timestamp': stream_data.get('live_time'),
+            'formats': formats,
+            'http_headers': {
+                'Referer': url,
+            },
+        }
