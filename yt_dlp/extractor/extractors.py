@@ -1,4 +1,4 @@
-from taobao import (
+from .taobao import (
     TmallIE,
     TaobaoIE,
     TbcnIE,
